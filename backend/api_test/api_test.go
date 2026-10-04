@@ -41,11 +41,13 @@ func TestMain(m *testing.M) {
 		AutoMigrate: true,
 	}
 
-	// Retry: on a cold CI database the container may still be starting.
+	// Retry briefly: on a cold CI database the container may still be starting.
+	// Kept short so a genuinely absent database fails fast and legibly rather
+	// than stalling for the full connect timeout on every attempt.
 	var handler http.Handler
 	var cleanup func()
 	var err error
-	for attempt := 0; attempt < 15; attempt++ {
+	for attempt := 0; attempt < 5; attempt++ {
 		handler, cleanup, err = server.NewRouter(context.Background(), cfg)
 		if err == nil {
 			break
@@ -53,8 +55,19 @@ func TestMain(m *testing.M) {
 		time.Sleep(2 * time.Second)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "SKIP: cannot reach database %q: %v\n", url, err)
-		os.Exit(0) // a missing database skips rather than fails; CI starts one
+		// A missing database is an environment problem, not a code problem, so
+		// fail loudly rather than exiting 0. Exiting 0 here makes `go test`
+		// report "ok" for a suite that ran nothing, which would let CI go green
+		// without ever exercising the API. Local runs that genuinely don't need
+		// a database can set WT_SKIP_IF_NO_DB=1 to get the old lenient behavior.
+		if os.Getenv("WT_SKIP_IF_NO_DB") == "1" {
+			fmt.Fprintf(os.Stderr, "SKIP: cannot reach database %q: %v\n", url, err)
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "FATAL: cannot reach database %q: %v\n", url, err)
+		fmt.Fprintf(os.Stderr,
+			"Start one with `docker compose up -d`, or run `go run -tags tools ./backend/tools/pgtest`.\n")
+		os.Exit(1)
 	}
 	defer cleanup()
 

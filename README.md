@@ -94,7 +94,7 @@ cd backend && go test ./... -v
 cd frontend && npm test && npm run build
 ```
 
-The backend suite drives real HTTP requests through the real router, service, and SQL layers, then asserts on the derived numbers (volume, estimated 1RM, PR flags) — including that one user can never read or modify another user's data. If no database is reachable it skips rather than failing; in CI the database service is started first.
+The backend suite drives real HTTP requests through the real router, service, and SQL layers, then asserts on the derived numbers (volume, estimated 1RM, PR flags) — including that one user can never read or modify another user's data. **It fails rather than skipping when the database is unreachable**, so a green CI run always means the API was actually exercised. Set `WT_SKIP_IF_NO_DB=1` to opt into lenient behavior locally.
 
 The frontend suite mounts real components in jsdom and asserts on rendered output and typing behavior, most importantly that the TypeScript `estimated1RM` returns the same values as the Go implementation and the PR-detection SQL. That agreement is the kind of thing a typecheck cannot catch and a bug in it would be invisible until someone compared the chart to the log.
 
