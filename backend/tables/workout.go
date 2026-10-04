@@ -121,7 +121,15 @@ func (w *Workouts) GetOwned(ctx context.Context, userID, id int64) (*Workout, er
 	if err != nil {
 		return nil, err
 	}
-	out.Exercises = exercises[out.ID]
+	// A workout with no exercises has no map entry, so the lookup yields a nil
+	// slice — which encodes as JSON `null` rather than `[]`. Clients that call
+	// .map/.flatMap on this would crash on an empty session, so always emit an
+	// array.
+	if exercises[out.ID] == nil {
+		out.Exercises = []WorkoutExercise{}
+	} else {
+		out.Exercises = exercises[out.ID]
+	}
 	return &out, nil
 }
 

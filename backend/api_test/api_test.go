@@ -711,6 +711,53 @@ func logSet(t *testing.T, token string, exerciseID int64, weight float64, reps i
 	return s
 }
 
+// TestEmptyWorkoutSerializesAsArray guards a bug the other tests missed: a
+// freshly created session with no exercises returned "exercises": null, because
+// the DAO looked up a map with no entry and a nil Go slice encodes as JSON null.
+// The frontend then called .flatMap on it and the whole Workout page crashed.
+// Every other test added exercises before reading a workout back, so nothing
+// caught it.
+func TestEmptyWorkoutSerializesAsArray(t *testing.T) {
+	c := newClient(t)
+
+	var created workout
+	if code := do(t, http.MethodPost, "/api/workouts", c.token, map[string]any{"name": "Empty"}, &created); code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d", code)
+	}
+
+	// Inspect the raw JSON so a typed decode can't paper over a null.
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/workouts/%d", created.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	rec := httptest.NewRecorder()
+	testServer.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get: expected 200, got %d", rec.Code)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode raw: %v", err)
+	}
+
+	if string(raw["exercises"]) == "null" {
+		t.Fatal("exercises serialized as null, want []")
+	}
+	if string(raw["exercises"]) != "[]" {
+		t.Errorf("expected an empty array, got %s", raw["exercises"])
+	}
+
+	// And the typed decode must yield a usable empty slice.
+	var loaded workout
+	do(t, http.MethodGet, fmt.Sprintf("/api/workouts/%d", created.ID), c.token, nil, &loaded)
+	if loaded.Exercises == nil {
+		t.Error("decoded Exercises is nil; callers doing len() or range are fine but JSON must not be null")
+	}
+	if len(loaded.Exercises) != 0 {
+		t.Errorf("expected 0 exercises, got %d", len(loaded.Exercises))
+	}
+}
+
 func TestWorkoutRejectsFutureDate(t *testing.T) {
 	c := newClient(t)
 	future := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)

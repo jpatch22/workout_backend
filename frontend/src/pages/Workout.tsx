@@ -113,7 +113,12 @@ export default function WorkoutPage() {
   if (error) return <ErrorBanner message={error.message} />;
   if (!workout) return null;
 
-  const workingSets = workout.exercises.flatMap((we) => we.sets.filter((s) => !s.isWarmup));
+  // The API sends an empty array for a session with no exercises, but never
+  // rely on that: a null here would crash every .map/.flatMap below and take
+  // the whole page down.
+  const exercises = workout.exercises ?? [];
+
+  const workingSets = exercises.flatMap((we) => (we.sets ?? []).filter((s) => !s.isWarmup));
   const totalVolume = workingSets.reduce((sum, s) => sum + s.weight * s.reps, 0);
   const prCount = workingSets.filter((s) => s.isPr).length;
 
@@ -140,7 +145,7 @@ export default function WorkoutPage() {
       <ErrorBanner message={actionError} onDismiss={() => setActionError(undefined)} />
 
       <div className="flex flex-wrap gap-4 text-sm text-slate-400">
-        <span>{workout.exercises.length} exercises</span>
+        <span>{exercises.length} exercises</span>
         <span>{workingSets.length} working sets</span>
         <span>{formatVolume(totalVolume)} lb volume</span>
         {prCount > 0 && <span className="text-amber-400">{prCount} PR{prCount === 1 ? '' : 's'}</span>}
@@ -148,13 +153,13 @@ export default function WorkoutPage() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem] lg:items-start">
         <div className="flex flex-col gap-4">
-          {workout.exercises.length === 0 ? (
+          {exercises.length === 0 ? (
             <EmptyState
               title="No exercises yet"
               message="Use the panel to add the movements you're training today."
             />
           ) : (
-            workout.exercises.map((we) => (
+            exercises.map((we) => (
               <ExerciseBlock
                 key={we.id}
                 workoutExercise={we}
@@ -180,7 +185,7 @@ export default function WorkoutPage() {
           <Card title="Add exercise">
             <ExerciseSelector
               catalog={catalog ?? []}
-              existing={workout.exercises.map((we) => we.exerciseId)}
+              existing={exercises.map((we) => we.exerciseId)}
               onPick={handlePick}
               onCreate={handleCreateExercise}
               creating={createExercise.isPending}
