@@ -8,6 +8,7 @@ const NAV = [
   { to: '/workout', label: 'Workout' },
   { to: '/history', label: 'History' },
   { to: '/progress', label: 'Progress' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 export function AppLayout() {

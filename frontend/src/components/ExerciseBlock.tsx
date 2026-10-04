@@ -7,13 +7,22 @@
 import { useState } from 'react';
 import type { WorkoutExercise } from '../types';
 import { SetRow } from './SetRow';
+import { useSettingsContext } from '../hooks/useSettings';
+import { estimated1RM } from '../utils/e1rm';
 import { Badge, Button, ErrorBanner } from './ui';
 import { formatVolume, formatWeight } from '../utils/formatting';
 
 interface Props {
   workoutExercise: WorkoutExercise;
-  onLogSet: (workoutExerciseId: number, input: { weight: number; reps: number; isWarmup: boolean }) => void;
-  onUpdateSet: (workoutExerciseId: number, id: number, patch: { weight: number; reps: number }) => void;
+  onLogSet: (
+    workoutExerciseId: number,
+    input: { weight: number; reps: number; isWarmup: boolean; rpe?: number | null },
+  ) => void;
+  onUpdateSet: (
+    workoutExerciseId: number,
+    id: number,
+    patch: { weight: number; reps: number; rpe?: number | null },
+  ) => void;
   onDeleteSet: (workoutExerciseId: number, id: number) => void;
   onRemove: (workoutExerciseId: number) => void;
   savingSetId?: number;
@@ -29,12 +38,16 @@ export function ExerciseBlock({
   savingSetId,
   logging,
 }: Props) {
+  const { formula, usesRPE, rpeEnabled } = useSettingsContext();
+  const showRPE = rpeEnabled && usesRPE;
+
   const working = workoutExercise.sets.filter((s) => !s.isWarmup);
 
   // Seed the quick-add from the last working set, which is what you repeat most.
   const last = working[working.length - 1];
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
+  const [rpe, setRpe] = useState('');
   const [isWarmup, setIsWarmup] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -46,13 +59,27 @@ export function ExerciseBlock({
       setError('Enter a valid weight and reps');
       return;
     }
+    // An empty RPE field is sent as null, which the backend reads as the
+    // configured default (10) rather than as zero.
+    let parsedRPE: number | null = null;
+    if (showRPE && rpe.trim() !== '') {
+      const parsed = Number(rpe);
+      if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10) {
+        setError('RPE must be between 0 and 10');
+        return;
+      }
+      parsedRPE = parsed;
+    }
+
     setError(undefined);
-    onLogSet(workoutExercise.id, { weight: w, reps: r, isWarmup });
+    onLogSet(workoutExercise.id, { weight: w, reps: r, isWarmup, rpe: parsedRPE });
   }
 
   const volume = working.reduce((sum, s) => sum + s.weight * s.reps, 0);
+  // Must use the same formula as the backend, or this summary would disagree
+  // with the chart and the PR badge for the very same sets.
   const topEst = working.reduce(
-    (best, s) => Math.max(best, s.weight * (1 + s.reps / 30)),
+    (best, s) => Math.max(best, estimated1RM(s.weight, s.reps, formula, s.rpe)),
     0,
   );
 
@@ -86,10 +113,23 @@ export function ExerciseBlock({
         </div>
       </header>
 
-      <div className="grid grid-cols-[1.5rem_1fr_1fr_auto] items-center gap-2 border-y border-slate-800/70 px-3 py-1.5">
+      <div
+        className={[
+          'grid items-center gap-2 border-y border-slate-800/70 px-3 py-1.5',
+          showRPE ? 'grid-cols-[1.5rem_1fr_1fr_3.5rem_auto]' : 'grid-cols-[1.5rem_1fr_1fr_auto]',
+        ].join(' ')}
+      >
         <span />
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Weight</span>
         <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Reps</span>
+        {showRPE && (
+          <span
+            className="text-xs font-medium uppercase tracking-wide text-slate-500"
+            title="Rate of perceived exertion, 1-10"
+          >
+            RPE
+          </span>
+        )}
         <span />
       </div>
 
@@ -106,7 +146,7 @@ export function ExerciseBlock({
 
       <div className="flex flex-col gap-2 border-t border-slate-800/70 p-3">
         <ErrorBanner message={error} onDismiss={() => setError(undefined)} />
-        <div className="grid grid-cols-2 gap-2">
+        <div className={['grid gap-2', showRPE ? 'grid-cols-[1fr_1fr_3.5rem]' : 'grid-cols-2'].join(' ')}>
           <input
             aria-label="New set weight"
             inputMode="decimal"
@@ -126,6 +166,20 @@ export function ExerciseBlock({
               if (e.key === 'Enter') quickAdd();
             }}
           />
+          {showRPE && (
+            <input
+              aria-label="New set RPE"
+              inputMode="decimal"
+              placeholder="RPE"
+              title="1-10. Leave blank to assume a max effort."
+              className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm tabular-nums text-slate-100 placeholder:text-slate-600 focus:border-emerald-500 focus:outline-none"
+              value={rpe}
+              onChange={(e) => setRpe(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') quickAdd();
+              }}
+            />
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={quickAdd} disabled={logging}>

@@ -122,11 +122,16 @@ export interface Dashboard {
   trackedExercises: TrackedExercise[];
 }
 
-/** Payload for creating or updating a set. */
+/**
+ * Payload for creating or updating a set.
+ *
+ * rpe is null-able on purpose: sending null explicitly clears a recorded RPE,
+ * whereas omitting the field leaves it untouched.
+ */
 export interface SetInput {
   weight: number;
   reps: number;
-  rpe?: number;
+  rpe?: number | null;
   isWarmup?: boolean;
   isBodyweight?: boolean;
 }

@@ -101,7 +101,8 @@ The frontend suite mounts real components in jsdom and asserts on rendered outpu
 There is also an end-to-end script that drives a running server with curl:
 
 ```bash
-./scripts/e2e.sh          # API=http://localhost:8080 by default
+./scripts/e2e.sh            # core workout journey
+./scripts/e2e-settings.sh   # settings + RPE formula behaviour
 ```
 
 If Docker's registry is unreachable, `backend/tools/pgtest` boots a real PostgreSQL from a downloaded binary instead, so `go test` still runs against actual SQL rather than skipping:
@@ -140,6 +141,9 @@ All routes except `/api/auth/register` and `/api/auth/login` require `Authorizat
 | GET | `/api/progress` | Headline aggregates |
 | GET | `/api/progress/exercises` | Exercises with training history |
 | GET | `/api/progress/exercise/:slug` | Full time series for one exercise |
+| GET | `/api/settings` | Your preferences |
+| PATCH | `/api/settings` | Update preferences (partial) |
+| GET | `/api/settings/formulas` | Selectable 1RM formulas |
 
 Errors always come back in one shape:
 
@@ -158,9 +162,33 @@ users ──< workouts ──< workout_exercises ──< sets
 
 `sets` is the atomic unit of all training data. `exercises` holds the shared catalog (`user_id IS NULL`) plus any user-created movements. Warmup sets are excluded from volume, estimated 1RM, streaks, and PR comparisons.
 
-**Estimated 1RM** uses Epley: `weight × (1 + reps / 30)`. It is defined once in `services.Estimated1RM`, mirrored in the PR-detection SQL, and again in `frontend/src/utils/formatting.ts` for the optimistic per-set preview — all three must stay in agreement.
-
 A **PR** is flagged when a set's estimated 1RM beats every prior non-warmup set for that exercise across all of that user's history.
+
+## Estimated 1RM formulas
+
+Two formulas, chosen per user in **Settings**:
+
+**Epley** (the default) ignores RPE:
+
+    e1RM = weight * (1 + reps / 30)
+
+**RPE (RTS polynomial)** reads the effort of each set. It is a polynomial regression fitted to Mike Tuchscherer's standard RTS chart:
+
+    totalReps = reps + (10 - rpe)
+    pct       = 1.0261 - 0.0242 * totalReps - 0.0004 * totalReps^2
+    e1RM      = weight / pct
+
+The RPE enters through `totalReps`: reps in reserve are treated as reps performed. So 5 reps at RPE 8 counts as 7, and the estimate reads higher than the same 5 at RPE 10 — which is the entire reason to use it. A set with **no RPE is read as 10**, the conservative direction, so an untracked set can never inflate a max or trigger a false PR.
+
+At RPE 10 the two formulas land within a few percent of each other (the polynomial is a regression fit, not an exact inversion), so switching does not visibly jump existing numbers. Past roughly 24 total reps the polynomial would cross zero, so its output is clamped at 10%.
+
+### Why the formula has to reach the database
+
+PR flags and chart values are computed in SQL. Had the setting only changed the UI, a PR badge could be computed by one formula while the chart displayed the other — a bug that is essentially invisible in review. Each of the five affected queries now takes the user's formula and builds its expression from it.
+
+The formula is defined once, in `backend/formulas`, with the SQL coefficients interpolated from the Go constants so they cannot drift. `TestFormulaImplementationsAgree` checks the Go and SQL versions against a live database across a grid of inputs, and the frontend copy in `src/utils/e1rm.ts` is pinned to the same values by unit tests. Three implementations must agree; those tests exist so they cannot silently stop agreeing.
+
+Adding a third formula means adding one entry to `formulas.Registry` — nothing else.
 
 ---
 
