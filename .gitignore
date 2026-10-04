@@ -1,0 +1,32 @@
+# --- Go ---
+*.exe
+*.dll
+*.so
+*.dylib
+/workout-tracker
+/backend/server/server
+coverage.out
+*.test
+
+# --- Node ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# --- Env & secrets ---
+# .env files are never committed; .env.example is the committed template.
+.env
+.env.*
+!.env.example
+
+# --- Editors / OS ---
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# --- Build artifacts ---
+dist/
+build/

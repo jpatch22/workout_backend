@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+/*
+ * Base layer only. Component styling is Tailwind utilities in the JSX, so this
+ * file stays small apart from the app's background and font.
+ */
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  }
+}
