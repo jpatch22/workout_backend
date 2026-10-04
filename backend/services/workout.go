@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackpatchell/workout-tracker/backend/formulas"
 	"github.com/jackpatchell/workout-tracker/backend/tables"
 )
 
@@ -16,11 +17,26 @@ var ErrNotFound = errors.New("not found")
 type WorkoutService struct {
 	workouts *tables.Workouts
 	sets     *tables.Sets
+	settings *SettingsService
 }
 
 // NewWorkoutService builds the workout service.
-func NewWorkoutService(w *tables.Workouts, s *tables.Sets) *WorkoutService {
-	return &WorkoutService{workouts: w, sets: s}
+func NewWorkoutService(w *tables.Workouts, s *tables.Sets, settings *SettingsService) *WorkoutService {
+	return &WorkoutService{workouts: w, sets: s, settings: settings}
+}
+
+// formula resolves the user's chosen 1RM formula, falling back to the default if
+// settings cannot be read. A preferences lookup failing should not stop someone
+// logging a workout, so this degrades rather than erroring.
+func (s *WorkoutService) formula(ctx context.Context, userID int64) formulas.Formula {
+	if s.settings == nil {
+		return formulas.Default
+	}
+	f, err := s.settings.Formula(ctx, userID)
+	if err != nil {
+		return formulas.Default
+	}
+	return f
 }
 
 // CreateWorkout starts a new session.
@@ -92,7 +108,7 @@ func (s *WorkoutService) DeleteWorkout(ctx context.Context, userID, id int64) er
 
 // ListWorkouts returns session summaries, newest first.
 func (s *WorkoutService) ListWorkouts(ctx context.Context, userID int64, limit int) ([]tables.WorkoutSummary, error) {
-	list, err := s.workouts.ListByUser(ctx, userID, limit)
+	list, err := s.workouts.ListByUser(ctx, userID, limit, s.formula(ctx, userID))
 	if err != nil {
 		return nil, wrapTableErr(err, "list workouts")
 	}
@@ -160,7 +176,7 @@ func (s *WorkoutService) LogSet(ctx context.Context, userID, workoutExerciseID i
 
 	// Warmups never count as PRs, so skip the comparison for them.
 	if !in.IsWarmup {
-		if _, err := s.sets.MarkPRIfBeater(ctx, userID, set.ID); err != nil {
+		if _, err := s.sets.MarkPRIfBeater(ctx, userID, set.ID, s.formula(ctx, userID)); err != nil {
 			return nil, wrapTableErr(err, "evaluate pr")
 		}
 		// Re-read so the client sees the resolved flag rather than the default.
@@ -196,7 +212,7 @@ func (s *WorkoutService) UpdateSet(ctx context.Context, userID, setID int64, in 
 	}
 
 	if !in.IsWarmup {
-		if _, err := s.sets.MarkPRIfBeater(ctx, userID, updated.ID); err != nil {
+		if _, err := s.sets.MarkPRIfBeater(ctx, userID, updated.ID, s.formula(ctx, userID)); err != nil {
 			return nil, wrapTableErr(err, "evaluate pr")
 		}
 		if refreshed, err := s.sets.GetOwned(ctx, userID, updated.ID); err == nil {

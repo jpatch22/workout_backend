@@ -33,13 +33,16 @@ type Claims struct {
 // AuthService owns registration, login, and token issuance.
 type AuthService struct {
 	users     *tables.Users
+	settings  *tables.Settings
 	jwtSecret []byte
 	jwtTTL    time.Duration
 }
 
-// NewAuthService builds the auth service.
-func NewAuthService(users *tables.Users, secret []byte, ttl time.Duration) *AuthService {
-	return &AuthService{users: users, jwtSecret: secret, jwtTTL: ttl}
+// NewAuthService builds the auth service. The settings DAO is optional: when
+// nil, registration simply skips creating a preferences row and the row is
+// created lazily on first read instead.
+func NewAuthService(users *tables.Users, settings *tables.Settings, secret []byte, ttl time.Duration) *AuthService {
+	return &AuthService{users: users, settings: settings, jwtSecret: secret, jwtTTL: ttl}
 }
 
 // Register creates an account and returns a signed-in session.
@@ -66,6 +69,15 @@ func (s *AuthService) Register(ctx context.Context, email, password, displayName
 			return nil, ValidationError{Field: "email", Message: "is already registered"}
 		}
 		return nil, fmt.Errorf("create user: %w", err)
+	}
+
+	// Create the preferences row up front so the settings endpoint returns
+	// defaults immediately. A failure here is not worth blocking registration
+	// over: Get creates the row lazily, so the worst case is one extra query.
+	if s.settings != nil {
+		if err := s.settings.EnsureExists(ctx, u.ID); err != nil {
+			return nil, fmt.Errorf("create settings for new user: %w", err)
+		}
 	}
 
 	token, err := s.issueToken(u.ID)

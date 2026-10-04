@@ -40,12 +40,16 @@ func NewRouter(ctx context.Context, cfg config.Config) (http.Handler, func(), er
 	workoutsTable := tables.NewWorkouts(db)
 	setsTable := tables.NewSets(db)
 	progressTable := tables.NewProgress(db)
+	settingsTable := tables.NewSettings(db)
 
 	// --- services (business logic) ---
-	authSvc := services.NewAuthService(usersTable, cfg.JWTSecret, cfg.JWTTTL)
+	authSvc := services.NewAuthService(usersTable, settingsTable, cfg.JWTSecret, cfg.JWTTTL)
 	exerciseSvc := services.NewExerciseService(exercisesTable)
-	workoutSvc := services.NewWorkoutService(workoutsTable, setsTable)
-	progressSvc := services.NewProgressService(progressTable, workoutsTable)
+	// Settings resolves first because the workout and progress services need the
+	// user's chosen 1RM formula to compute PR flags and chart values.
+	settingsSvc := services.NewSettingsService(settingsTable)
+	workoutSvc := services.NewWorkoutService(workoutsTable, setsTable, settingsSvc)
+	progressSvc := services.NewProgressService(progressTable, workoutsTable, settingsSvc)
 
 	// --- routers (HTTP mapping) ---
 	r := mux.NewRouter()
@@ -56,6 +60,7 @@ func NewRouter(ctx context.Context, cfg config.Config) (http.Handler, func(), er
 	routers.NewWorkoutRouter(workoutSvc).Register(r, authSvc)
 	routers.NewSetRouter(workoutSvc).Register(r, authSvc)
 	routers.NewProgressRouter(progressSvc).Register(r, authSvc)
+	routers.NewSettingsRouter(settingsSvc).Register(r, authSvc)
 
 	r.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowedHandler)

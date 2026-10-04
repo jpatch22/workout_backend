@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/jackpatchell/workout-tracker/backend/formulas"
 )
 
 // Set is one logged attempt: the atomic unit of all training data. Everything
@@ -123,11 +125,16 @@ func (s *Sets) GetOwned(ctx context.Context, userID, setID int64) (*Set, error) 
 // MarkPRIfBeater flags a set as a personal record when its estimated 1RM beats
 // every previous non-warmup set for that exercise. Computed in SQL against the
 // full history so it is correct even after deleting old workouts.
-func (s *Sets) MarkPRIfBeater(ctx context.Context, userID, setID int64) (bool, error) {
+func (s *Sets) MarkPRIfBeater(ctx context.Context, userID, setID int64, formula formulas.Formula) (bool, error) {
 	var isPR bool
+	// Compare against every prior set using the user's chosen formula, so the PR
+	// flag and the progress chart can never disagree about what "stronger" means.
+	targetEst := formula.SQLFor("t")
+	priorEst := formula.SQLFor("s2")
+
 	err := s.db.Pool.QueryRow(ctx, `
 		WITH target AS (
-			SELECT s.id, s.weight, s.reps, e.id AS exercise_id
+			SELECT s.id, s.weight, s.reps, s.rpe, e.id AS exercise_id
 			FROM sets s
 			JOIN workout_exercises we ON we.id = s.workout_exercise_id
 			JOIN workouts w          ON w.id  = we.workout_id
@@ -135,11 +142,10 @@ func (s *Sets) MarkPRIfBeater(ctx context.Context, userID, setID int64) (bool, e
 			WHERE s.id = $1 AND w.user_id = $2
 		),
 		est AS (
-			-- Epley estimated 1RM: weight * (1 + reps/30)
 			SELECT t.id,
-			       (t.weight * (1 + t.reps::float8 / 30)) AS est_1rm,
+			       `+targetEst+`                                      AS est_1rm,
 			       COALESCE((
-			           SELECT MAX(s2.weight * (1 + s2.reps::float8 / 30))
+			           SELECT MAX(`+priorEst+`)
 			           FROM sets s2
 			           JOIN workout_exercises we2 ON we2.id = s2.workout_exercise_id
 			           JOIN workouts w2          ON w2.id  = we2.workout_id

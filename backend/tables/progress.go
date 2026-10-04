@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/jackpatchell/workout-tracker/backend/formulas"
 )
 
 // ProgressPoint is one (date, performance) sample for an exercise over time.
@@ -57,7 +59,7 @@ func NewProgress(db *DB) *Progress { return &Progress{db: db} }
 // The "best set" of a session is the set with the highest estimated 1RM
 // (Epley), so a heavy triple outranks a light set of twenty for progression
 // purposes. Warmup sets are excluded throughout.
-func (p *Progress) ForExercise(ctx context.Context, userID int64, slug string, since *time.Time) (*ExerciseProgress, error) {
+func (p *Progress) ForExercise(ctx context.Context, userID int64, slug string, since *time.Time, formula formulas.Formula) (*ExerciseProgress, error) {
 	out := &ExerciseProgress{Slug: slug, Points: []ProgressPoint{}}
 
 	err := p.db.Pool.QueryRow(ctx, `
@@ -70,12 +72,17 @@ func (p *Progress) ForExercise(ctx context.Context, userID int64, slug string, s
 		return nil, wrapNoRows(err, fmt.Errorf("find exercise %q: %w", slug, err))
 	}
 
+	// The e1RM expression is built from the user's chosen formula rather than
+	// hardcoded, so a chart and the PR badge that produced it are always computed
+	// the same way.
+	e1rm := formula.SQLFor("s")
+
 	rows, err := p.db.Pool.Query(ctx, `
 		SELECT date_trunc('day', w.performed_at)                       AS session_date,
 		       w.id                                                   AS workout_id,
 		       MAX(s.weight)                                           AS best_weight,
-		       (ARRAY_AGG(s.reps ORDER BY s.weight * (1 + s.reps::float8 / 30) DESC))[1] AS best_reps,
-		       MAX(s.weight * (1 + s.reps::float8 / 30))              AS est_1rm,
+		       (ARRAY_AGG(s.reps ORDER BY `+e1rm+` DESC))[1]            AS best_reps,
+		       MAX(`+e1rm+`)                                           AS est_1rm,
 		       COALESCE(SUM(s.weight * s.reps), 0)                     AS volume,
 		       COUNT(*)                                               AS set_count
 		FROM sets s
@@ -142,12 +149,14 @@ func (p *Progress) ForExercise(ctx context.Context, userID int64, slug string, s
 
 // ListTracked returns every exercise the user has actually trained, with their
 // best estimated 1RM. This is what the Progress page indexes over.
-func (p *Progress) ListTracked(ctx context.Context, userID int64) ([]RecentExercise, error) {
+func (p *Progress) ListTracked(ctx context.Context, userID int64, formula formulas.Formula) ([]RecentExercise, error) {
+	e1rm := formula.SQLFor("s")
+
 	rows, err := p.db.Pool.Query(ctx, `
 		SELECT e.id, e.name, e.slug, COALESCE(e.muscle_group, ''),
 		       MAX(w.performed_at)                                        AS last_trained,
 		       COUNT(DISTINCT w.id)                                       AS session_count,
-		       MAX(s.weight * (1 + s.reps::float8 / 30))                 AS best_est_1rm
+		       MAX(`+e1rm+`)                                              AS best_est_1rm
 		FROM sets s
 		JOIN workout_exercises we ON we.id = s.workout_exercise_id
 		JOIN workouts w          ON w.id  = we.workout_id

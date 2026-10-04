@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackpatchell/workout-tracker/backend/formulas"
 	"github.com/jackpatchell/workout-tracker/backend/tables"
 )
 
@@ -17,11 +18,25 @@ import (
 type ProgressService struct {
 	progress *tables.Progress
 	workouts *tables.Workouts
+	settings *SettingsService
 }
 
 // NewProgressService builds the progress service.
-func NewProgressService(p *tables.Progress, w *tables.Workouts) *ProgressService {
-	return &ProgressService{progress: p, workouts: w}
+func NewProgressService(p *tables.Progress, w *tables.Workouts, settings *SettingsService) *ProgressService {
+	return &ProgressService{progress: p, workouts: w, settings: settings}
+}
+
+// formula resolves the user's chosen 1RM formula, degrading to the default if
+// preferences cannot be read.
+func (s *ProgressService) formula(ctx context.Context, userID int64) formulas.Formula {
+	if s.settings == nil {
+		return formulas.Default
+	}
+	f, err := s.settings.Formula(ctx, userID)
+	if err != nil {
+		return formulas.Default
+	}
+	return f
 }
 
 // Dashboard is everything the home screen needs, in one payload.
@@ -33,17 +48,19 @@ type Dashboard struct {
 
 // Dashboard assembles the landing screen payload.
 func (s *ProgressService) Dashboard(ctx context.Context, userID int64) (*Dashboard, error) {
+	formula := s.formula(ctx, userID)
+
 	stats, err := s.progress.Overview(ctx, userID)
 	if err != nil {
 		return nil, wrapTableErr(err, "dashboard stats")
 	}
 
-	recent, err := s.workouts.ListByUser(ctx, userID, 5)
+	recent, err := s.workouts.ListByUser(ctx, userID, 5, formula)
 	if err != nil {
 		return nil, wrapTableErr(err, "dashboard workouts")
 	}
 
-	tracked, err := s.progress.ListTracked(ctx, userID)
+	tracked, err := s.progress.ListTracked(ctx, userID, formula)
 	if err != nil {
 		return nil, wrapTableErr(err, "dashboard exercises")
 	}
@@ -65,7 +82,7 @@ func (s *ProgressService) Overview(ctx context.Context, userID int64) (*tables.D
 
 // TrackedExercises lists every exercise the user has trained.
 func (s *ProgressService) TrackedExercises(ctx context.Context, userID int64) ([]tables.RecentExercise, error) {
-	list, err := s.progress.ListTracked(ctx, userID)
+	list, err := s.progress.ListTracked(ctx, userID, s.formula(ctx, userID))
 	if err != nil {
 		return nil, wrapTableErr(err, "list tracked exercises")
 	}
@@ -82,7 +99,7 @@ func (s *ProgressService) ExerciseProgress(ctx context.Context, userID int64, sl
 		return nil, invalid("slug", "is required")
 	}
 
-	p, err := s.progress.ForExercise(ctx, userID, slug, since)
+	p, err := s.progress.ForExercise(ctx, userID, slug, since, s.formula(ctx, userID))
 	if err != nil {
 		return nil, wrapTableErr(err, "exercise progress")
 	}

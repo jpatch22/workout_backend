@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/jackpatchell/workout-tracker/backend/formulas"
 )
 
 // WorkoutExercise is one exercise performed inside a workout, with its sets.
@@ -134,7 +136,7 @@ func (w *Workouts) GetOwned(ctx context.Context, userID, id int64) (*Workout, er
 }
 
 // ListByUser returns workout summaries, newest first, optionally limited.
-func (w *Workouts) ListByUser(ctx context.Context, userID int64, limit int) ([]WorkoutSummary, error) {
+func (w *Workouts) ListByUser(ctx context.Context, userID int64, limit int, formula formulas.Formula) ([]WorkoutSummary, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -143,7 +145,7 @@ func (w *Workouts) ListByUser(ctx context.Context, userID int64, limit int) ([]W
 		       COUNT(DISTINCT we.id)                      AS exercise_count,
 		       COUNT(s.id)                                AS set_count,
 		       COALESCE(SUM(s.weight * s.reps), 0)        AS total_volume,
-		       COALESCE(MAX(s.weight * (1 + s.reps::float8 / 30)), 0) AS top_est_1rm
+		       COALESCE(MAX(`+formula.SQLFor("s")+`), 0)             AS top_est_1rm
 		FROM workouts w
 		LEFT JOIN workout_exercises we ON we.workout_id = w.id
 		LEFT JOIN sets s ON s.workout_exercise_id = we.id AND NOT s.is_warmup
