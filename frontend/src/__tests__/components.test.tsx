@@ -444,12 +444,12 @@ describe('SetRow with RPE enabled', () => {
     expect(screen.getByLabelText('Set 1 RPE')).toBeTruthy();
   });
 
-  it('hides the RPE field when the formula ignores RPE', () => {
+  it('shows the RPE field when capture is on, even with a non-RPE formula', () => {
     renderWithSettings(
       <SetRow set={set()} index={0} onSave={vi.fn()} onDelete={vi.fn()} />,
       { rpeEnabled: true, oneRmFormula: 'epley' },
     );
-    expect(screen.queryByLabelText('Set 1 RPE')).toBeNull();
+    expect(screen.getByLabelText('Set 1 RPE')).toBeTruthy();
   });
 
   it('hides the RPE field when capture is off, even with an RPE formula', () => {
