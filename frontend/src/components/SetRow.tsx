@@ -26,7 +26,7 @@ interface Props {
 }
 
 export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
-  const { formula, usesRPE, rpeEnabled } = useSettingsContext();
+  const { formula, rpeEnabled } = useSettingsContext();
 
   const [weight, setWeight] = useState(String(set.weight));
   const [reps, setReps] = useState(String(set.reps));
@@ -41,7 +41,7 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
 
   // The RPE column only appears when the user turned on capture AND picked a
   // formula that reads RPE; otherwise it would be a field nobody reads.
-  const showRPE = rpeEnabled && usesRPE;
+  const showRPE = rpeEnabled;
 
   function commit() {
     const w = parseWeight(weight);

@@ -38,8 +38,10 @@ export function ExerciseBlock({
   savingSetId,
   logging,
 }: Props) {
-  const { formula, usesRPE, rpeEnabled } = useSettingsContext();
-  const showRPE = rpeEnabled && usesRPE;
+  const { formula, rpeEnabled } = useSettingsContext();
+  // Show the RPE field whenever capture is enabled; the formula only decides
+  // whether RPE feeds the e1RM estimate, not whether the field appears.
+  const showRPE = rpeEnabled;
 
   const working = workoutExercise.sets.filter((s) => !s.isWarmup);
 
