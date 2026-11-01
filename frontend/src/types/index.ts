@@ -33,6 +33,7 @@ export interface Set {
   weight: number;
   reps: number;
   rpe?: number;
+  notes?: string;
   isWarmup: boolean;
   isBodyweight: boolean;
   isPr: boolean;
@@ -68,6 +69,13 @@ export interface WorkoutSummary {
   setCount: number;
   totalVolume: number;
   topEstimated1Rm: number;
+  setNotes: SetNote[];
+}
+
+export interface SetNote {
+  exerciseName: string;
+  setNumber: number;
+  notes: string;
 }
 
 export interface ProgressPoint {
@@ -132,6 +140,7 @@ export interface SetInput {
   weight: number;
   reps: number;
   rpe?: number | null;
+  notes?: string;
   isWarmup?: boolean;
   isBodyweight?: boolean;
 }

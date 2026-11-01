@@ -20,6 +20,7 @@ type Set struct {
 	Weight            float64   `json:"weight"`
 	Reps              int       `json:"reps"`
 	RPE               *float64  `json:"rpe,omitempty"`
+	Notes             string    `json:"notes"`
 	IsWarmup          bool      `json:"isWarmup"`
 	IsBodyweight      bool      `json:"isBodyweight"`
 	IsPR              bool      `json:"isPr"`
@@ -32,18 +33,18 @@ type Sets struct{ db *DB }
 // NewSets builds the sets DAO.
 func NewSets(db *DB) *Sets { return &Sets{db: db} }
 
-const setCols = `id, workout_exercise_id, weight, reps, rpe, is_warmup, is_bodyweight, is_pr, logged_at`
+const setCols = `id, workout_exercise_id, weight, reps, rpe, notes, is_warmup, is_bodyweight, is_pr, logged_at`
 
 // Create inserts a set and returns it with its generated ID.
 func (s *Sets) Create(ctx context.Context, set *Set) (*Set, error) {
 	var out Set
 	err := s.db.Pool.QueryRow(ctx, `
-		INSERT INTO sets (workout_exercise_id, weight, reps, rpe, is_warmup, is_bodyweight, is_pr)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO sets (workout_exercise_id, weight, reps, rpe, notes, is_warmup, is_bodyweight, is_pr)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING `+setCols,
-		set.WorkoutExerciseID, set.Weight, set.Reps, set.RPE,
+		set.WorkoutExerciseID, set.Weight, set.Reps, set.RPE, set.Notes,
 		set.IsWarmup, set.IsBodyweight, set.IsPR,
-	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE,
+	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE, &out.Notes,
 		&out.IsWarmup, &out.IsBodyweight, &out.IsPR, &out.LoggedAt)
 	if err != nil {
 		if isForeignKeyViolation(err) {
@@ -59,12 +60,13 @@ func (s *Sets) Update(ctx context.Context, id int64, set *Set) (*Set, error) {
 	var out Set
 	err := s.db.Pool.QueryRow(ctx, `
 		UPDATE sets
-		SET weight = $2, reps = $3, rpe = $4,
-		    is_warmup = $5, is_bodyweight = $6, is_pr = $7
+		SET weight = $2, reps = $3, rpe = $4, notes = $5,
+		    is_warmup = $6, is_bodyweight = $7, is_pr = $8
 		WHERE id = $1
 		RETURNING `+setCols,
-		id, set.Weight, set.Reps, set.RPE, set.IsWarmup, set.IsBodyweight, set.IsPR,
-	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE,
+		id, set.Weight, set.Reps, set.RPE, set.Notes,
+		set.IsWarmup, set.IsBodyweight, set.IsPR,
+	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE, &out.Notes,
 		&out.IsWarmup, &out.IsBodyweight, &out.IsPR, &out.LoggedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -104,14 +106,14 @@ func (s *Sets) ListByWorkoutExercise(ctx context.Context, workoutExerciseID int6
 func (s *Sets) GetOwned(ctx context.Context, userID, setID int64) (*Set, error) {
 	var out Set
 	err := s.db.Pool.QueryRow(ctx, `
-		SELECT s.id, s.workout_exercise_id, s.weight, s.reps, s.rpe,
+		SELECT s.id, s.workout_exercise_id, s.weight, s.reps, s.rpe, s.notes,
 		       s.is_warmup, s.is_bodyweight, s.is_pr, s.logged_at
 		FROM sets s
 		JOIN workout_exercises we ON we.id = s.workout_exercise_id
 		JOIN workouts w          ON w.id  = we.workout_id
 		WHERE s.id = $1 AND w.user_id = $2`,
 		setID, userID,
-	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE,
+	).Scan(&out.ID, &out.WorkoutExerciseID, &out.Weight, &out.Reps, &out.RPE, &out.Notes,
 		&out.IsWarmup, &out.IsBodyweight, &out.IsPR, &out.LoggedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -176,7 +178,7 @@ func scanSets(rows pgx.Rows) ([]Set, error) {
 	out := make([]Set, 0)
 	for rows.Next() {
 		var s Set
-		if err := rows.Scan(&s.ID, &s.WorkoutExerciseID, &s.Weight, &s.Reps, &s.RPE,
+		if err := rows.Scan(&s.ID, &s.WorkoutExerciseID, &s.Weight, &s.Reps, &s.RPE, &s.Notes,
 			&s.IsWarmup, &s.IsBodyweight, &s.IsPR, &s.LoggedAt); err != nil {
 			return nil, fmt.Errorf("scan set: %w", err)
 		}

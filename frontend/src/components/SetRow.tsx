@@ -20,7 +20,7 @@ import { formatWeight, parseReps, parseWeight } from '../utils/formatting';
 interface Props {
   set: Set;
   index: number;
-  onSave: (id: number, patch: { weight: number; reps: number; rpe?: number | null }) => void;
+  onSave: (id: number, patch: { weight: number; reps: number; rpe?: number | null; notes?: string }) => void;
   onDelete: (id: number) => void;
   saving?: boolean;
 }
@@ -31,6 +31,7 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
   const [weight, setWeight] = useState(String(set.weight));
   const [reps, setReps] = useState(String(set.reps));
   const [rpe, setRpe] = useState(set.rpe === undefined ? '' : String(set.rpe));
+  const [notes, setNotes] = useState(set.notes ?? '');
   const weightRef = useRef<HTMLInputElement>(null);
   const repsRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +39,7 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
   useEffect(() => setWeight(String(set.weight)), [set.weight]);
   useEffect(() => setReps(String(set.reps)), [set.reps]);
   useEffect(() => setRpe(set.rpe === undefined ? '' : String(set.rpe)), [set.rpe]);
+  useEffect(() => setNotes(set.notes ?? ''), [set.notes]);
 
   // The RPE column only appears when the user turned on capture AND picked a
   // formula that reads RPE; otherwise it would be a field nobody reads.
@@ -53,9 +55,11 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
       return;
     }
 
-    const patch: { weight: number; reps: number; rpe?: number | null } = { weight: w, reps: r };
+    const patch: { weight: number; reps: number; rpe?: number | null; notes?: string } = { weight: w, reps: r };
     const storedRPE = set.rpe === undefined ? null : set.rpe;
+    const storedNotes = set.notes ?? '';
     let rpeChanged = false;
+    let notesChanged = false;
 
     if (showRPE) {
       const trimmed = rpe.trim();
@@ -75,7 +79,13 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
       }
     }
 
-    if (w !== set.weight || r !== set.reps || rpeChanged) {
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes !== storedNotes) {
+      patch.notes = trimmedNotes;
+      notesChanged = true;
+    }
+
+    if (w !== set.weight || r !== set.reps || rpeChanged || notesChanged) {
       onSave(set.id, patch);
     }
   }
@@ -152,6 +162,16 @@ export function SetRow({ set, index, onSave, onDelete, saving }: Props) {
           onBlur={commit}
         />
       )}
+
+      <input
+        aria-label={`Set ${index + 1} notes`}
+        placeholder="Notes"
+        className="w-full rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-500 focus:outline-none"
+        value={notes}
+        disabled={set.isWarmup}
+        onChange={(e) => setNotes(e.target.value)}
+        onBlur={commit}
+      />
 
       <div className="flex items-center gap-2">
         {set.isWarmup ? (

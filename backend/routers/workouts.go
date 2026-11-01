@@ -202,6 +202,7 @@ type setRequest struct {
 	Weight       float64  `json:"weight"`
 	Reps         int      `json:"reps"`
 	RPE          *float64 `json:"rpe"`
+	Notes        string   `json:"notes"`
 	IsWarmup     bool     `json:"isWarmup"`
 	IsBodyweight bool     `json:"isBodyweight"`
 }
@@ -215,6 +216,7 @@ func (req setRequest) toInput() (services.LogSetInput, error) {
 		Weight:       req.Weight,
 		Reps:         req.Reps,
 		RPE:          rpe,
+		Notes:        req.Notes,
 		IsWarmup:     req.IsWarmup,
 		IsBodyweight: req.IsBodyweight,
 	}, nil

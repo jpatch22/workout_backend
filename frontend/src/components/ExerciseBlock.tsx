@@ -16,7 +16,7 @@ interface Props {
   workoutExercise: WorkoutExercise;
   onLogSet: (
     workoutExerciseId: number,
-    input: { weight: number; reps: number; isWarmup: boolean; rpe?: number | null },
+    input: { weight: number; reps: number; isWarmup: boolean; rpe?: number | null; notes?: string },
   ) => void;
   onUpdateSet: (
     workoutExerciseId: number,
@@ -50,6 +50,7 @@ export function ExerciseBlock({
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
   const [rpe, setRpe] = useState('');
+  const [notes, setNotes] = useState('');
   const [isWarmup, setIsWarmup] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -74,7 +75,7 @@ export function ExerciseBlock({
     }
 
     setError(undefined);
-    onLogSet(workoutExercise.id, { weight: w, reps: r, isWarmup, rpe: parsedRPE });
+    onLogSet(workoutExercise.id, { weight: w, reps: r, isWarmup, rpe: parsedRPE, notes: notes.trim() || undefined });
   }
 
   const volume = working.reduce((sum, s) => sum + s.weight * s.reps, 0);
@@ -183,6 +184,13 @@ export function ExerciseBlock({
             />
           )}
         </div>
+        <input
+          aria-label="New set notes"
+          placeholder="Notes (optional)"
+          className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-500 focus:outline-none"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
         <div className="flex items-center gap-2">
           <Button size="sm" onClick={quickAdd} disabled={logging}>
             {logging ? 'Logging…' : 'Add set'}

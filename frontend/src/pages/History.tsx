@@ -49,6 +49,19 @@ export default function History() {
                 {formatDate(w.performedAt)} · {w.exerciseCount} exercise
                 {w.exerciseCount === 1 ? '' : 's'} · {w.setCount} sets
               </p>
+              {w.setNotes?.length > 0 && (
+                <div className="mt-1.5 flex flex-col gap-0.5 text-xs text-slate-400">
+                  {w.setNotes.slice(0, 2).map((note, index) => (
+                    <p key={`${note.exerciseName}-${note.setNumber}-${index}`} className="truncate">
+                      <span className="text-slate-500">{note.exerciseName} · Set {note.setNumber}:</span>{' '}
+                      {note.notes}
+                    </p>
+                  ))}
+                  {w.setNotes.length > 2 && (
+                    <p className="text-slate-500">+{w.setNotes.length - 2} more note{w.setNotes.length === 3 ? '' : 's'}</p>
+                  )}
+                </div>
+              )}
             </Link>
 
             <div className="flex items-center gap-4 text-sm">

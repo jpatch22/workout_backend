@@ -1,5 +1,5 @@
 /** The logging screen: pick exercises, log sets, edit or finish the session. */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -43,6 +43,23 @@ export default function WorkoutPage() {
   const createExercise = useCreateExercise();
 
   const [actionError, setActionError] = useState<string>();
+  // Set rows save edits on blur. Keep those requests alive until Done has
+  // waited for them, so leaving the workout cannot outrun a notes save.
+  const pendingSaves = useRef(new Set<Promise<unknown>>());
+  const saveFailed = useRef(false);
+
+  function trackSave(save: () => Promise<unknown>) {
+    saveFailed.current = false;
+    const pending = save()
+      .catch((err: unknown) => {
+        saveFailed.current = true;
+        report(err);
+        throw err;
+      })
+      .finally(() => pendingSaves.current.delete(pending));
+    pendingSaves.current.add(pending);
+    return pending;
+  }
 
   function report(err: unknown) {
     if (err instanceof ApiError) setActionError(err.message);
@@ -93,6 +110,17 @@ export default function WorkoutPage() {
     }
   }
 
+  async function finishSession() {
+    const pending = [...pendingSaves.current];
+    const results = await Promise.allSettled(pending);
+    if (saveFailed.current || results.some((result) => result.status === 'rejected')) {
+      setActionError('A set or note could not be saved. Please try again before leaving.');
+      return;
+    }
+    setActionError(undefined);
+    navigate('/history');
+  }
+
   // No session selected yet: a launcher, not a blank screen.
   if (!workoutId) {
     return (
@@ -133,7 +161,7 @@ export default function WorkoutPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => navigate('/history')}>
+          <Button variant="secondary" onClick={finishSession}>
             Done
           </Button>
           <Button variant="danger" onClick={handleDeleteSession}>
@@ -165,10 +193,10 @@ export default function WorkoutPage() {
                 workoutExercise={we}
                 logging={logSet.isPending}
                 onLogSet={(workoutExerciseId, input) =>
-                  logSet.mutate({ workoutExerciseId, input }, { onError: report })
+                  void trackSave(() => logSet.mutateAsync({ workoutExerciseId, input })).catch(() => {})
                 }
                 onUpdateSet={(_workoutExerciseId, setId, patch) =>
-                  updateSet.mutate({ id: setId, input: patch }, { onError: report })
+                  void trackSave(() => updateSet.mutateAsync({ id: setId, input: patch })).catch(() => {})
                 }
                 onDeleteSet={(_workoutExerciseId, setId) =>
                   deleteSet.mutate(setId, { onError: report })

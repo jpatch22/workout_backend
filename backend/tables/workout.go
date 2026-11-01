@@ -44,6 +44,14 @@ type WorkoutSummary struct {
 	SetCount        int       `json:"setCount"`
 	TotalVolume     float64   `json:"totalVolume"`
 	TopEstimated1RM float64   `json:"topEstimated1Rm"`
+	SetNotes        []SetNote `json:"setNotes"`
+}
+
+// SetNote is a compact note preview for one set in the History list.
+type SetNote struct {
+	ExerciseName string `json:"exerciseName"`
+	SetNumber    int    `json:"setNumber"`
+	Notes        string `json:"notes"`
 }
 
 // Workouts is the data-access object for workouts and workout_exercises.
@@ -169,6 +177,47 @@ func (w *Workouts) ListByUser(ctx context.Context, userID int64, limit int, form
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate workouts: %w", err)
+	}
+
+	if len(out) == 0 {
+		return out, nil
+	}
+	ids := make([]int64, 0, len(out))
+	byWorkout := make(map[int64]int, len(out))
+	for i := range out {
+		ids = append(ids, out[i].ID)
+		out[i].SetNotes = []SetNote{}
+		byWorkout[out[i].ID] = i
+	}
+	noteRows, err := w.db.Pool.Query(ctx, `
+		SELECT workout_id, exercise_name, set_number, notes
+		FROM (
+			SELECT we.workout_id, we.position AS exercise_position, e.name AS exercise_name,
+			       ROW_NUMBER() OVER (PARTITION BY we.id ORDER BY s.logged_at, s.id) AS set_number,
+			       s.logged_at, s.id, s.notes
+			FROM workout_exercises we
+			JOIN exercises e ON e.id = we.exercise_id
+			JOIN sets s ON s.workout_exercise_id = we.id
+			WHERE we.workout_id = ANY($1)
+		) logged_sets
+		WHERE BTRIM(notes) <> ''
+		ORDER BY workout_id, exercise_position, logged_at, id`, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list workout set notes: %w", err)
+	}
+	defer noteRows.Close()
+	for noteRows.Next() {
+		var workoutID int64
+		var note SetNote
+		if err := noteRows.Scan(&workoutID, &note.ExerciseName, &note.SetNumber, &note.Notes); err != nil {
+			return nil, fmt.Errorf("scan workout set note: %w", err)
+		}
+		if i, ok := byWorkout[workoutID]; ok {
+			out[i].SetNotes = append(out[i].SetNotes, note)
+		}
+	}
+	if err := noteRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workout set notes: %w", err)
 	}
 	return out, nil
 }
@@ -316,7 +365,7 @@ func (w *Workouts) loadExercises(ctx context.Context, workoutIDs []int64) (map[i
 	// Attach sets in one query rather than per exercise.
 	if len(order) > 0 {
 		setRows, err := w.db.Pool.Query(ctx, `
-			SELECT workout_exercise_id, id, weight, reps, rpe, is_warmup, is_bodyweight, is_pr, logged_at
+			SELECT workout_exercise_id, id, weight, reps, rpe, notes, is_warmup, is_bodyweight, is_pr, logged_at
 			FROM sets
 			WHERE workout_exercise_id = ANY($1)
 			ORDER BY workout_exercise_id, logged_at, id`, order)
@@ -328,7 +377,7 @@ func (w *Workouts) loadExercises(ctx context.Context, workoutIDs []int64) (map[i
 		for setRows.Next() {
 			var weID int64
 			var s Set
-			if err := setRows.Scan(&weID, &s.ID, &s.Weight, &s.Reps, &s.RPE,
+			if err := setRows.Scan(&weID, &s.ID, &s.Weight, &s.Reps, &s.RPE, &s.Notes,
 				&s.IsWarmup, &s.IsBodyweight, &s.IsPR, &s.LoggedAt); err != nil {
 				return nil, fmt.Errorf("scan set: %w", err)
 			}

@@ -145,6 +145,7 @@ type LogSetInput struct {
 	Weight       float64
 	Reps         int
 	RPE          *float64
+	Notes        string
 	IsWarmup     bool
 	IsBodyweight bool
 }
@@ -167,6 +168,7 @@ func (s *WorkoutService) LogSet(ctx context.Context, userID, workoutExerciseID i
 		Weight:            in.Weight,
 		Reps:              in.Reps,
 		RPE:               in.RPE,
+		Notes:             in.Notes,
 		IsWarmup:          in.IsWarmup,
 		IsBodyweight:      in.IsBodyweight,
 	})
@@ -203,6 +205,7 @@ func (s *WorkoutService) UpdateSet(ctx context.Context, userID, setID int64, in 
 		Weight:       in.Weight,
 		Reps:         in.Reps,
 		RPE:          in.RPE,
+		Notes:        in.Notes,
 		IsWarmup:     in.IsWarmup,
 		IsBodyweight: in.IsBodyweight,
 		IsPR:         existing.IsPR,
