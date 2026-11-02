@@ -16,6 +16,7 @@ import Login from './pages/Login';
 import Progress from './pages/Progress';
 import Settings from './pages/Settings';
 import WorkoutPage from './pages/Workout';
+import Programs from './pages/Programs';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { status } = useAuth();
@@ -44,6 +45,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="workout" element={<WorkoutPage />} />
         <Route path="workout/:id" element={<WorkoutPage />} />
+        <Route path="programs" element={<Programs />} />
         <Route path="history" element={<History />} />
         <Route path="progress" element={<Progress />} />
         <Route path="progress/:slug" element={<Progress />} />

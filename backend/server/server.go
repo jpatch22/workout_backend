@@ -41,6 +41,7 @@ func NewRouter(ctx context.Context, cfg config.Config) (http.Handler, func(), er
 	setsTable := tables.NewSets(db)
 	progressTable := tables.NewProgress(db)
 	settingsTable := tables.NewSettings(db)
+	programsTable := tables.NewPrograms(db)
 
 	// --- services (business logic) ---
 	authSvc := services.NewAuthService(usersTable, settingsTable, cfg.JWTSecret, cfg.JWTTTL)
@@ -50,6 +51,7 @@ func NewRouter(ctx context.Context, cfg config.Config) (http.Handler, func(), er
 	settingsSvc := services.NewSettingsService(settingsTable)
 	workoutSvc := services.NewWorkoutService(workoutsTable, setsTable, settingsSvc)
 	progressSvc := services.NewProgressService(progressTable, workoutsTable, settingsSvc)
+	programSvc := services.NewProgramService(programsTable, exerciseSvc, workoutSvc)
 
 	// --- routers (HTTP mapping) ---
 	r := mux.NewRouter()
@@ -61,6 +63,7 @@ func NewRouter(ctx context.Context, cfg config.Config) (http.Handler, func(), er
 	routers.NewSetRouter(workoutSvc).Register(r, authSvc)
 	routers.NewProgressRouter(progressSvc).Register(r, authSvc)
 	routers.NewSettingsRouter(settingsSvc).Register(r, authSvc)
+	routers.NewProgramRouter(programSvc).Register(r, authSvc)
 
 	r.NotFoundHandler = http.HandlerFunc(notFoundHandler)
 	r.MethodNotAllowedHandler = http.HandlerFunc(methodNotAllowedHandler)

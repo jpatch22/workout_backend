@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -132,7 +133,40 @@ type workout struct {
 type workoutExercise struct {
 	ID       int64    `json:"id"`
 	Exercise exercise `json:"exercise"`
+	Notes    string   `json:"notes"`
 	Sets     []set    `json:"sets"`
+}
+
+type program struct {
+	ID    int64         `json:"id"`
+	Name  string        `json:"name"`
+	Weeks []programWeek `json:"weeks"`
+}
+
+type programWeek struct {
+	ID       string           `json:"id"`
+	Name     string           `json:"name"`
+	Sessions []programSession `json:"sessions"`
+}
+
+type programSession struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Status    string            `json:"status"`
+	WorkoutID *int64            `json:"workoutId"`
+	Exercises []programExercise `json:"exercises"`
+}
+
+type programExercise struct {
+	ExerciseID int64              `json:"exerciseId"`
+	Sets       []programTargetSet `json:"sets"`
+	Notes      string             `json:"notes"`
+}
+
+type programTargetSet struct {
+	ID   string   `json:"id"`
+	Reps int      `json:"reps"`
+	RPE  *float64 `json:"rpe"`
 }
 
 type set struct {
@@ -274,6 +308,112 @@ func TestDuplicateEmailRejected(t *testing.T) {
 	}, nil)
 	if code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for duplicate email, got %d", code)
+	}
+}
+
+func TestProgramLifecycleAndUserIsolation(t *testing.T) {
+	c := newClient(t)
+	other := newClient(t)
+	backSquatID := exerciseID(t, c, "back-squat")
+	rpe := 8.0
+	body := map[string]any{
+		"name":        "Three Week Strength",
+		"description": "Flexible progression",
+		"weeks": []any{
+			map[string]any{"id": "week-1", "name": "Week 1", "sessions": []any{
+				map[string]any{"id": "week-1-day-a", "name": "Day A", "exercises": []any{
+					map[string]any{"exerciseId": backSquatID, "notes": "Pause at the bottom", "sets": []any{
+						map[string]any{"id": "set-a1", "reps": 5, "rpe": rpe},
+						map[string]any{"id": "set-a2", "reps": 5},
+					}},
+				}},
+				map[string]any{"id": "week-1-day-b", "name": "Day B", "exercises": []any{
+					map[string]any{"exerciseId": backSquatID, "notes": "", "sets": []any{map[string]any{"id": "set-b1", "reps": 8}}},
+				}},
+			}},
+			map[string]any{"id": "week-2", "name": "Week 2", "sessions": []any{
+				map[string]any{"id": "week-2-day-a", "name": "Day A", "exercises": []any{
+					map[string]any{"exerciseId": backSquatID, "notes": "", "sets": []any{map[string]any{"id": "set-c1", "reps": 3}}},
+				}},
+			}},
+		},
+	}
+
+	var created program
+	if code := do(t, http.MethodPost, "/api/programs", c.token, body, &created); code != http.StatusCreated {
+		t.Fatalf("create program: expected 201, got %d", code)
+	}
+	if created.ID == 0 || len(created.Weeks) != 2 || created.Weeks[0].Sessions[0].Status != "upcoming" {
+		t.Fatalf("unexpected created program: %+v", created)
+	}
+
+	var ownPrograms []program
+	if code := do(t, http.MethodGet, "/api/programs", c.token, nil, &ownPrograms); code != http.StatusOK || len(ownPrograms) != 1 {
+		t.Fatalf("list programs: code=%d count=%d", code, len(ownPrograms))
+	}
+	var otherPrograms []program
+	if code := do(t, http.MethodGet, "/api/programs", other.token, nil, &otherPrograms); code != http.StatusOK || len(otherPrograms) != 0 {
+		t.Fatalf("another user should not see programs: code=%d count=%d", code, len(otherPrograms))
+	}
+	if code := do(t, http.MethodGet, "/api/programs", "", nil, nil); code != http.StatusUnauthorized {
+		t.Fatalf("programs should require authentication, got %d", code)
+	}
+
+	programPath := fmt.Sprintf("/api/programs/%d", created.ID)
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-b/skip", c.token, nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("skipping out of order should fail, got %d", code)
+	}
+	if code := do(t, http.MethodPost, fmt.Sprintf("/api/programs/%d/sessions/week-1-day-a/start", created.ID), other.token, nil, nil); code != http.StatusNotFound {
+		t.Fatalf("another user should not start this program, got %d", code)
+	}
+
+	var started workout
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-a/start", c.token, nil, &started); code != http.StatusCreated {
+		t.Fatalf("start first session: expected 201, got %d", code)
+	}
+	if len(started.Exercises) != 1 || started.Exercises[0].Notes == "" || !strings.Contains(started.Exercises[0].Notes, "5 reps @ RPE 8") {
+		t.Fatalf("program prescriptions were not copied to the workout: %+v", started.Exercises)
+	}
+	var startedAgain workout
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-a/start", c.token, nil, &startedAgain); code != http.StatusCreated || startedAgain.ID != started.ID {
+		t.Fatalf("starting an in-progress session should resume its workout: code=%d id=%d want=%d", code, startedAgain.ID, started.ID)
+	}
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-a/skip", c.token, nil, nil); code != http.StatusBadRequest {
+		t.Fatalf("skipping an in-progress session should fail, got %d", code)
+	}
+
+	var updated program
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-a/complete", c.token, nil, &updated); code != http.StatusOK {
+		t.Fatalf("complete first session: expected 200, got %d", code)
+	}
+	if updated.Weeks[0].Sessions[0].Status != "completed" || updated.Weeks[0].Sessions[0].WorkoutID == nil {
+		t.Fatalf("completion should retain its workout link: %+v", updated.Weeks[0].Sessions[0])
+	}
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-1-day-b/skip", c.token, nil, &updated); code != http.StatusOK {
+		t.Fatalf("skip second session: expected 200, got %d", code)
+	}
+	if updated.Weeks[0].Sessions[1].Status != "skipped" {
+		t.Fatalf("expected second session skipped, got %q", updated.Weeks[0].Sessions[1].Status)
+	}
+
+	var nextWorkout workout
+	if code := do(t, http.MethodPost, programPath+"/sessions/week-2-day-a/start", c.token, nil, &nextWorkout); code != http.StatusCreated {
+		t.Fatalf("start next week's session: expected 201, got %d", code)
+	}
+	updated = program{}
+	if code := do(t, http.MethodPost, programPath+"/restart", c.token, nil, &updated); code != http.StatusOK {
+		t.Fatalf("restart program: expected 200, got %d", code)
+	}
+	for _, week := range updated.Weeks {
+		for _, session := range week.Sessions {
+			if session.Status != "upcoming" || session.WorkoutID != nil {
+				t.Errorf("restart should clear run state but retain the plan: %+v", session)
+			}
+		}
+	}
+	var history []workoutSummary
+	if code := do(t, http.MethodGet, "/api/workouts", c.token, nil, &history); code != http.StatusOK || len(history) < 2 {
+		t.Fatalf("restart should preserve historical workouts: code=%d count=%d", code, len(history))
 	}
 }
 

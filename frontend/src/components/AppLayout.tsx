@@ -6,6 +6,7 @@ import { Button } from './ui';
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/workout', label: 'Workout' },
+  { to: '/programs', label: 'Programs' },
   { to: '/history', label: 'History' },
   { to: '/progress', label: 'Progress' },
   { to: '/settings', label: 'Settings' },
