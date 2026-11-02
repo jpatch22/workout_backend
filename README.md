@@ -144,6 +144,12 @@ All routes except `/api/auth/register` and `/api/auth/login` require `Authorizat
 | GET | `/api/settings` | Your preferences |
 | PATCH | `/api/settings` | Update preferences (partial) |
 | GET | `/api/settings/formulas` | Selectable 1RM formulas |
+| GET | `/api/programs` | List your programs and progress |
+| POST | `/api/programs` | Create a program with weeks, sessions, and set targets |
+| POST | `/api/programs/:id/sessions/:sessionId/start` | Start the next session as a workout |
+| POST | `/api/programs/:id/sessions/:sessionId/complete` | Mark an in-progress program session complete |
+| POST | `/api/programs/:id/sessions/:sessionId/skip` | Skip the next program session |
+| POST | `/api/programs/:id/restart` | Reset program progress while preserving workout history |
 
 Errors always come back in one shape:
 
@@ -158,6 +164,7 @@ Errors always come back in one shape:
 ```
 users ──< workouts ──< workout_exercises ──< sets
                     └──< workout_exercises >── exercises
+users ──< programs ── program weeks / sessions / prescriptions
 ```
 
 `sets` is the atomic unit of all training data. `exercises` holds the shared catalog (`user_id IS NULL`) plus any user-created movements. Warmup sets are excluded from volume, estimated 1RM, streaks, and PR comparisons.

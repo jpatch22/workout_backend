@@ -116,6 +116,12 @@ export function ExerciseBlock({
         </div>
       </header>
 
+      {workoutExercise.notes && (
+        <p className="whitespace-pre-wrap border-t border-slate-800/70 px-3 py-2 text-xs text-sky-200/80">
+          {workoutExercise.notes}
+        </p>
+      )}
+
       <div
         className={[
           'grid items-center gap-2 border-y border-slate-800/70 px-3 py-1.5',

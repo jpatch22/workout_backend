@@ -151,3 +151,60 @@ export interface WorkoutInput {
   performedAt?: string;
   notes?: string;
 }
+
+export interface ProgramSet {
+  id: string;
+  reps: number;
+  rpe?: number;
+}
+
+export interface ProgramExercise {
+  exerciseId: number;
+  sets: ProgramSet[];
+  notes: string;
+}
+
+export type ProgramSessionStatus = 'upcoming' | 'completed' | 'skipped';
+
+export interface ProgramSession {
+  id: string;
+  name: string;
+  exercises: ProgramExercise[];
+  status: ProgramSessionStatus;
+  workoutId?: number;
+}
+
+export interface ProgramWeek {
+  id: string;
+  name: string;
+  sessions: ProgramSession[];
+}
+
+export interface Program {
+  id: number;
+  userId: number;
+  name: string;
+  description: string;
+  weeks: ProgramWeek[];
+  createdAt: string;
+}
+
+export interface ProgramSessionInput {
+  id: string;
+  name: string;
+  exercises: ProgramExercise[];
+  status?: ProgramSessionStatus;
+  workoutId?: number;
+}
+
+export interface ProgramWeekInput {
+  id: string;
+  name: string;
+  sessions: ProgramSessionInput[];
+}
+
+export interface ProgramInput {
+  name: string;
+  description: string;
+  weeks: ProgramWeekInput[];
+}

@@ -12,8 +12,9 @@ import {
 } from '@tanstack/react-query';
 import { exerciseApi } from '../api/exercises';
 import { progressApi } from '../api/progress';
+import { programApi } from '../api/programs';
 import { setApi, workoutApi } from '../api/workouts';
-import type { SetInput, WorkoutInput } from '../types';
+import type { ProgramInput, SetInput, WorkoutInput } from '../types';
 
 // --- queries ---
 
@@ -63,6 +64,10 @@ export function useExerciseProgress(slug: string | null) {
   });
 }
 
+export function usePrograms() {
+  return useQuery({ queryKey: ['programs'], queryFn: programApi.list });
+}
+
 // --- mutations ---
 
 /**
@@ -107,12 +112,59 @@ export function useDeleteWorkout() {
   });
 }
 
+export function useCreateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ProgramInput) => programApi.create(input),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['programs'] }); },
+  });
+}
+
+export function useStartProgramSession() {
+  const qc = useQueryClient();
+  const invalidateTraining = useInvalidateTrainingData();
+  return useMutation({
+    mutationFn: ({ programId, sessionId }: { programId: number; sessionId: string }) =>
+      programApi.startSession(programId, sessionId),
+    onSuccess: (workout) => {
+      void qc.invalidateQueries({ queryKey: ['programs'] });
+      invalidateTraining(workout.id);
+    },
+  });
+}
+
+export function useCompleteProgramSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ programId, sessionId }: { programId: number; sessionId: string }) =>
+      programApi.completeSession(programId, sessionId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['programs'] }); },
+  });
+}
+
+export function useSkipProgramSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ programId, sessionId }: { programId: number; sessionId: string }) =>
+      programApi.skipSession(programId, sessionId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['programs'] }); },
+  });
+}
+
+export function useRestartProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (programId: number) => programApi.restart(programId),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['programs'] }); },
+  });
+}
+
 export function useAddExercise(workoutId: number) {
   const invalidate = useInvalidateTrainingData();
   return useMutation({
-    mutationFn: ({ exerciseId, notes }: { exerciseId: number; notes?: string }) =>
-      workoutApi.addExercise(workoutId, exerciseId, notes),
-    onSuccess: () => invalidate(workoutId),
+    mutationFn: ({ exerciseId, notes, targetWorkoutId }: { exerciseId: number; notes?: string; targetWorkoutId?: number }) =>
+      workoutApi.addExercise(targetWorkoutId ?? workoutId, exerciseId, notes),
+    onSuccess: (_data, variables) => invalidate(variables.targetWorkoutId ?? workoutId),
   });
 }
 
