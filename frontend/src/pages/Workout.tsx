@@ -21,6 +21,18 @@ import { Button, Card, EmptyState, ErrorBanner, Spinner } from '../components/ui
 import { formatDateTime, formatVolume } from '../utils/formatting';
 import type { Exercise } from '../types';
 
+function localDateValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function localStartOfDayIso(dateValue: string) {
+  const [year, month, day] = dateValue.split('-').map(Number);
+  return new Date(year, month - 1, day).toISOString();
+}
+
 export default function WorkoutPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -32,6 +44,7 @@ export default function WorkoutPage() {
 
   // When no session is chosen yet, offer to start one.
   const [starting, setStarting] = useState(false);
+  const [workoutDate, setWorkoutDate] = useState(() => localDateValue(new Date()));
   const createWorkout = useCreateWorkout();
 
   const addExercise = useAddExercise(workoutId ?? 0);
@@ -70,7 +83,7 @@ export default function WorkoutPage() {
     setStarting(true);
     setActionError(undefined);
     try {
-      const wk = await createWorkout.mutateAsync({ name: '' });
+      const wk = await createWorkout.mutateAsync({ name: '', performedAt: localStartOfDayIso(workoutDate) });
       navigate(`/workout/${wk.id}`, { replace: true });
     } catch (err) {
       report(err);
@@ -128,10 +141,22 @@ export default function WorkoutPage() {
         <h1 className="text-2xl font-semibold text-slate-100">Workout</h1>
         <EmptyState
           title="No session open"
-          message="Start a new session to log your training. It'll be timestamped now and you can adjust the date later."
-          action={<Button size="lg" onClick={startSession} disabled={starting}>
-            {starting ? 'Starting…' : 'Start workout'}
-          </Button>}
+          message="Choose the day for this workout, then add exercises and log your sets."
+          action={<div className="flex flex-col items-center gap-3 sm:flex-row">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              Workout day
+              <input
+                type="date"
+                value={workoutDate}
+                max={localDateValue(new Date())}
+                onChange={(event) => setWorkoutDate(event.target.value)}
+                className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 [color-scheme:dark]"
+              />
+            </label>
+            <Button size="lg" onClick={startSession} disabled={starting || !workoutDate}>
+              {starting ? 'Starting…' : 'Start workout'}
+            </Button>
+          </div>}
         />
       </div>
     );
